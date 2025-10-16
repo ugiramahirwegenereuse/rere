@@ -1,37 +1,57 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        IMAGE_NAME = 'ugiramahirwe/node-web-app' // Your Docker Hub repo
+        IMAGE_TAG = 'latest'
+    }
+
     stages {
-        stage('Clone') {
+        stage('Build App') {
             steps {
-                git branch: 'main', url: 'https://github.com/ugiramahirwegenereuse/rere.git'
+                powershell 'npm install'
             }
         }
 
-        stage('Verify Tools') {
+        stage('Test App') {
             steps {
-                sh 'node -v'
-                sh 'npm -v'
+                powershell 'npm test'
             }
         }
 
-        stage('Build') {
+        stage('Build & Push Docker Image') {
             steps {
-                echo "Building the project..."
-                sh 'ls -la'
+                powershell """
+                docker build -t $env:IMAGE_NAME:$env:IMAGE_TAG .
+                echo $env:DOCKERHUB_CREDENTIALS_PSW | docker login -u $env:DOCKERHUB_CREDENTIALS_USR --password-stdin
+                docker push $env:IMAGE_NAME:$env:IMAGE_TAG
+                """
             }
         }
 
-        stage('Test') {
+        stage('Deploy App') {
             steps {
-                echo "Running tests..."
+                powershell """
+                # Stop existing container if running
+                docker stop node-web-app -ErrorAction SilentlyContinue
+
+                # Remove existing container if exists
+                docker rm node-web-app -ErrorAction SilentlyContinue
+
+                # Pull latest image
+                docker pull $env:IMAGE_NAME:$env:IMAGE_TAG
+
+                # Run the container
+                docker run -d -p 3000:3000 --name node-web-app $env:IMAGE_NAME:$env:IMAGE_TAG
+                """
             }
         }
+    }
 
-        stage('Deploy') {
-            steps {
-                echo "Deploying..."
-            }
+    post {
+        always {
+            echo 'Pipeline finished.'
         }
     }
 }
